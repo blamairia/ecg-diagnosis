@@ -55,9 +55,9 @@ class ECGDataset(Dataset):
         ecg_data = ecg_data[-15000:, self.use_leads]
         result = np.zeros((15000, self.nleads)) # 30 s, 500 Hz
         result[-nsteps:, :] = ecg_data
-        if self.label_dict.get(patient_id):
-            labels = self.label_dict.get(patient_id)
-        else:
+        # retrieve or cache labels for patient_id
+        labels = self.label_dict.get(patient_id)
+        if labels is None:
             labels = row[self.classes].to_numpy(dtype=np.float32)
             self.label_dict[patient_id] = labels
         return torch.from_numpy(result.transpose()).float(), torch.from_numpy(labels).float()

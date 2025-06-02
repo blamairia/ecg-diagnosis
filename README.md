@@ -20,12 +20,33 @@ The 12-lead ECG dataset used in this study is the CPSC2018 training dataset whic
 - Matplotlib 3.1.1
 - Numpy 1.17.2
 - Pandas 0.25.2
-- PyTorch 1.2.0
+- PyTorch 1.2.
 - Scikit-learn 0.21.3
 - Scipy 1.3.1
 - Shap 0.35.1
 - Tqdm 4.36.1
 - Wfdb 2.2.1
+- pywavelets
+- lightgbm
+- biosppy
+- peakutils
+
+!/root/micromamba/envs/py37/bin/pip install torch==1.2.0
+!/root/micromamba/envs/py37/bin/pip install matplotlib==3.1.1
+!/root/micromamba/envs/py37/bin/pip install numpy==1.17.2
+!/root/micromamba/envs/py37/bin/pip install pandas==0.25.2
+!/root/micromamba/envs/py37/bin/pip install scikit-learn==0.21.3
+!/root/micromamba/envs/py37/bin/pip install scipy==1.3.1
+!/root/micromamba/envs/py37/bin/pip install shap==0.35.1
+!/root/micromamba/envs/py37/bin/pip install tqdm==4.36.1
+!/root/micromamba/envs/py37/bin/pip install wfdb==2.2.1
+!/root/micromamba/envs/py37/bin/pip install pywavelets
+!/root/micromamba/envs/py37/bin/pip install lightgbm
+!/root/micromamba/envs/py37/bin/pip install biospp*
+!/root/micromamba/envs/py37/bin/pip install peakutils-
+```sh
+pip install torch==1.2.0 scikit-learn==0.21.3 scipy==1.3.1 shap==0.35.1 tqdm==4.36.1 wfdb==2.2.1 matplotlib==3.1.1 numpy==1.17.2 pandas==0.25.2
+```
 
 ## Run
 
