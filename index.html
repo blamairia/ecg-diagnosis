@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ECG Arrhythmia Classifier</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+  <div class="max-w-4xl mx-auto p-6">
+    <header class="mb-10 text-center">
+      <h1 class="text-4xl font-bold text-blue-700">ECG Arrhythmia Detection</h1>
+      <p class="mt-2 text-gray-600">
+        Upload MIT-BIH `.dat` + `.hea` files to detect beat types using your trained model.
+      </p>
+    </header>
+
+    <section class="mb-12 bg-white shadow p-6 rounded-lg">
+      <form id="ecgForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium">.hea file</label>
+          <input type="file" id="heaFile" accept=".hea" class="w-full p-2 border rounded-lg" required>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">.dat file</label>
+          <input type="file" id="datFile" accept=".dat" class="w-full p-2 border rounded-lg" required>
+        </div>
+        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">🔍 Analyze</button>
+      </form>
+    </section>
+
+    <section id="resultsSection" class="hidden">
+      <div class="bg-white shadow p-6 rounded-lg">
+        <h2 class="text-2xl font-semibold mb-4">📊 Beat Type Distribution</h2>
+        <canvas id="barChart"></canvas>
+      </div>
+      <div class="bg-white shadow mt-6 p-6 rounded-lg">
+        <h2 class="text-2xl font-semibold mb-4">🫀 First ECG Sample</h2>
+        <canvas id="ecgPlot"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    document.getElementById("ecgForm").onsubmit = async function (e) {
+      e.preventDefault();
+      const heaFile = document.getElementById("heaFile").files[0];
+      const datFile = document.getElementById("datFile").files[0];
+
+      if (!heaFile || !datFile) return alert("Please upload both .hea and .dat files");
+
+      const formData = new FormData();
+      formData.append("hea_file", heaFile);
+      formData.append("dat_file", datFile);
+
+      const response = await fetch("http://127.0.0.1:8000/predict/", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (!result.predictions) return alert("Error: " + result.detail);
+
+      const counts = { N: 0, S: 0, V: 0, F: 0, Q: 0 };
+      result.predictions.forEach(l => counts[l] = (counts[l] || 0) + 1);
+
+      new Chart(document.getElementById("barChart"), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(counts),
+          datasets: [{
+            label: 'Beat Type',
+            data: Object.values(counts),
+            backgroundColor: ['#4ade80', '#facc15', '#f87171', '#c084fc', '#60a5fa']
+          }]
+        }
+      });
+
+      const ecg = result.signals[0];
+      new Chart(document.getElementById("ecgPlot"), {
+        type: 'line',
+        data: {
+          labels: ecg.map((_, i) => i),
+          datasets: [{
+            label: "ECG Signal",
+            data: ecg,
+            borderColor: 'blue',
+            pointRadius: 0,
+            fill: false
+          }]
+        }
+      });
+
+      document.getElementById("resultsSection").classList.remove("hidden");
+    };
+  </script>
+</body>
+</html>
