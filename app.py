@@ -3,144 +3,269 @@ import tempfile
 
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
+import plotly.graph_objects as go
 import wfdb
 import torch
 
-from resnet import resnet34  # Import your ResNet definition
-# Note: resnet34 must be in the same folder or on PYTHONPATH
+from resnet import resnet34  # Make sure resnet34.py is in the same folder
 
-st.set_page_config(page_title="ECG Arrhythmia Classifier", layout="wide")
-
-# ------------------------------------------------------------
-# 1) Specify where your PyTorch‐trained weights live:
-#
-#    Make sure you have a file named exactly "resnet34_model.pth"
-#    (or edit this path) in the same directory as app.py.
-# ------------------------------------------------------------
-MODEL_PATH = "models/resnet34_CPSC_all_42.pth"
+# -----------------------------
+# 1) MODEL LOADING (cached)
+# -----------------------------
+MODEL_PATH = "resnet34_model.pth"
 
 @st.cache_resource(show_spinner=False)
 def load_model():
     """
-    Instantiate a ResNet34( input_channels=12 ), load weights,
-    set to eval(), and return it (on CPU or GPU if available).
+    Instantiate ResNet34(input_channels=12, num_classes=9), load weights,
+    send to CPU or GPU, and return (model, device).
     """
-    # 1. Build the model with 12 input channels (12 leads) and 9 outputs
     net = resnet34(input_channels=12, num_classes=9)
-    # 2. Load state_dict
-    #    We assume it was saved via `torch.save(net.state_dict(), MODEL_PATH)` in main.py
-    #
-    #    If you need GPU inference, uncomment the GPU lines and ensure you have a CUDA device.
-    #
-    device = torch.device("cuda:0") if (torch.cuda.is_available()) else torch.device("cpu")
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
     state_dict = torch.load(MODEL_PATH, map_location=device)
     net.load_state_dict(state_dict)
     net.to(device)
     net.eval()
     return net, device
 
-# Load once and cache
 model, device = load_model()
 
-st.title("ECG Arrhythmia Detection (PyTorch ResNet)")
-st.write("Upload a MIT-BIH/ CPSC `.mat` + `.hea` pair. We’ll read all 12 leads, "
-         "show lead II, then classify into 9 arrhythmia classes.")
+# -----------------------------
+# 2) TRANSLATIONS / TEXT
+# -----------------------------
+LANGUAGES = {"English": "en", "Français": "fr"}
+lang_choice = st.sidebar.selectbox("Language / Langue", ["English", "Français"])
+lang = LANGUAGES[lang_choice]
 
-# ------------------------------------------------------------
-# 2) File uploader: accept exactly two files (same basename)
-# ------------------------------------------------------------
+# Text dictionaries
+TEXT = {
+    "title": {
+        "en": "ECG Arrhythmia Detection (PyTorch ResNet)",
+        "fr": "Détection d’arythmie ECG (PyTorch ResNet)"
+    },
+    "description": {
+        "en": (
+            "Upload exactly two files (same basename): a `.hea` file and its matching `.mat` file.  \n"
+            "We’ll read all 12 leads from the MATLAB‐formatted record, let you choose which lead to visualize, "
+            "and then classify the recording into 9 arrhythmia types."
+        ),
+        "fr": (
+            "Uploadez exactement deux fichiers (même nom de base) : un fichier `.hea` et son fichier `.mat` correspondant.  \n"
+            "Nous lirons les 12 dérivations du fichier MATLAB, vous laisserez choisir la dérivation à visualiser, "
+            "puis classifierons l’enregistrement en 9 types d’arythmie."
+        )
+    },
+    "upload_hint": {
+        "en": "Please upload exactly two files (`.hea` + `.mat`) with the same basename.",
+        "fr": "Veuillez uploader exactement deux fichiers (`.hea` + `.mat`) portant le même nom de base."
+    },
+    "lead_selector": {
+        "en": "Select lead to display:",
+        "fr": "Choisir la dérivation à afficher :"
+    },
+    "prob_title": {
+        "en": "Predicted Class Probabilities",
+        "fr": "Probabilités prédites par classe"
+    },
+    "prob_explain": {
+        "en": (
+            "Below are the nine arrhythmia classes with their respective probabilities (from 0 to 1).  \n"
+            "A higher probability means the model is more confident that the rhythm is present."
+        ),
+        "fr": (
+            "Voici les neuf classes d’arythmie avec leurs probabilités respectives (de 0 à 1).  \n"
+            "Une probabilité élevée signifie que le modèle est plus confiant que le rythme est présent."
+        )
+    },
+    "abnormal_hint": {
+        "en": (
+            "If the model or a future explainer provides time ranges of abnormality, they will be overlaid in red."
+        ),
+        "fr": (
+            "Si le modèle ou un futur module d’explication fournit des plages horaires d’anomalie, elles seront surlignées en rouge."
+        )
+    }
+}
+
+st.set_page_config(page_title=TEXT["title"][lang], layout="wide")
+st.title(TEXT["title"][lang])
+st.write(TEXT["description"][lang])
+
+# -----------------------------
+# 3) FILE-UPLOADER
+# -----------------------------
 uploaded = st.file_uploader(
-    "Upload exactly two files (same basename): `<name>.mat` and `<name>.hea`",
-    type=["mat", "hea"],
+    TEXT["upload_hint"][lang],
+    type=["hea", "mat"],
     accept_multiple_files=True
 )
 
-if uploaded and len(uploaded) == 2:
-    # 2a) Write them into a temp dir so wfdb can read by basename
-    tmpdir = tempfile.mkdtemp()
-    for f in uploaded:
-        with open(os.path.join(tmpdir, f.name), "wb") as out:
-            out.write(f.getbuffer())
+if not (uploaded and len(uploaded) == 2):
+    st.info(TEXT["upload_hint"][lang])
+    st.stop()
 
-    # 2b) Infer record basename (strip extension)
-    #     We assume both files have the same prefix, e.g. "100_sdnn.dat" + "100_sdnn.hea"
-    base = os.path.splitext(uploaded[0].name)[0]
-    recpath = os.path.join(tmpdir, base)  # wfdb expects no extension here
+# -----------------------------
+# 4) SAVE UPLOADS TO TMP DIR
+# -----------------------------
+tmpdir = tempfile.mkdtemp()
+for f in uploaded:
+    path = os.path.join(tmpdir, f.name)
+    with open(path, "wb") as out:
+        out.write(f.getbuffer())
 
-    # --------------------------------------------------------
-    # 3) Read the record using wfdb (all leads, all samples)
-    # --------------------------------------------------------
-    try:
-        # Read every available lead; we expect 12 leads if CPSC or MIT-BIH
-        record = wfdb.rdrecord(recpath)
-        sig_all = record.p_signal  # NumPy shape = [n_samples, n_leads]
-        # If your record has >12 leads, you can select exactly the first 12 columns:
-        # sig_all = sig_all[:, :12]
-    except Exception as e:
-        st.error(f"Could not read WFDB record: {e}")
-    else:
-        # ------------------------------------------------------------
-        # 4) Plot a quick preview of lead II (channel index 1) for first 1000 samples
-        # ------------------------------------------------------------
-        sig_lead2 = sig_all[:, 1] if sig_all.shape[1] >= 2 else sig_all[:, 0]
-        npts = sig_lead2.shape[0]
-        if npts < 1000:
-            # pad if shorter
-            sig2_1000 = np.zeros(1000, dtype=np.float32)
-            sig2_1000[:npts] = sig_lead2
-        else:
-            sig2_1000 = sig_lead2[:1000]
+# Infer basename (must match between .hea and .mat)
+base1 = os.path.splitext(uploaded[0].name)[0]
+base2 = os.path.splitext(uploaded[1].name)[0]
+if base1 != base2:
+    st.error("❌ " + {
+        "en": "The two files must share the exact same basename (e.g. both start with '100').",
+        "fr": "Les deux fichiers doivent partager exactement le même nom de base (par ex. tous deux commencent par '100')."
+    }[lang])
+    st.stop()
+record_name = base1
+recpath = os.path.join(tmpdir, record_name)
 
-        fig, ax = plt.subplots(figsize=(8, 3))
-        ax.plot(np.arange(1000) / 100.0, sig2_1000, linewidth=1)
-        ax.set_title(f"Lead II (first 1000 samples) — {base}")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("µV")
-        st.pyplot(fig)
+# -----------------------------
+# 5) READ WFDB RECORD (MATLAB)
+# -----------------------------
+try:
+    record = wfdb.rdrecord(recpath)
+    sig_all = record.p_signal  # shape = [n_samples, n_leads]
+    lead_names = record.sig_name  # list of channel labels, e.g. ['I','II','III',…,'V6']
+except Exception as e:
+    st.error("❌ " + {
+        "en": f"Could not read WFDB record `{record_name}`: {e}",
+        "fr": f"Impossible de lire l’enregistrement WFDB `{record_name}` : {e}"
+    }[lang])
+    st.stop()
 
-        # ------------------------------------------------------------
-        # 5) Prepare the full 12-lead input just as `ECGDataset` does:
-        #    - We want exactly 15 000 samples (30 s @ 500 Hz)
-        #    - If record is shorter, zero-pad at the _top_ (front); if longer, take last 15 000
-        # ------------------------------------------------------------
-        nsteps, nleads = sig_all.shape  # normally [nsteps, 12]
-        # Clip to last 15 000 rows, then pad if needed
-        clipped = sig_all[-15000:, :] if nsteps >= 15000 else sig_all
-        result = np.zeros((15000, nleads), dtype=np.float32)
-        result[-clipped.shape[0] :, :] = clipped  # zero-pad the “front” if needed
+# Ensure we have at least one channel
+if sig_all.ndim != 2 or len(lead_names) == 0:
+    st.error("❌ " + {
+        "en": "Loaded signal has unexpected shape; cannot proceed.",
+        "fr": "Le signal chargé a une forme inattendue ; impossible de continuer."
+    }[lang])
+    st.stop()
 
-        # Now transpose → shape [n_leads, 15000], then add batch dim → [1, n_leads, 15000]
-        x_np = result.transpose()  # [12, 15000]
-        x_tensor = torch.from_numpy(x_np).unsqueeze(0).to(device)  # [1, 12, 15000]
-        x_tensor = x_tensor.float()
+nsteps, nleads = sig_all.shape  # usually [≥15000, 12]
 
-        # ------------------------------------------------------------
-        # 6) Run the ResNet inference (no grad → just feed-forward)
-        # ------------------------------------------------------------
-        with torch.no_grad():
-            logits = model(x_tensor)                  # shape [1,9]
-            probs = torch.sigmoid(logits)[0].cpu().numpy()  # [9] as float32
+# -----------------------------
+# 6) LEAD SELECTION & INTERACTIVE PLOT
+# -----------------------------
+st.markdown(f"**{TEXT['lead_selector'][lang]}**")
+selected_lead = st.selectbox(
+    label="",
+    options=lead_names,     # e.g. ["I","II","III",…,"V6"]
+    index=lead_names.index("II") if "II" in lead_names else 0
+)
 
-        # ------------------------------------------------------------
-        # 7) Display the nine class probabilities as a simple DataFrame
-        # ------------------------------------------------------------
-        classes = ['SNR','AF','IAVB','LBBB','RBBB','PAC','PVC','STD','STE']
-        # Build a table: class name  |  probability
-        prob_table = np.vstack((classes, [f"{p:.3f}" for p in probs])).T
-        st.markdown("## Predicted Class Probabilities")
-        st.table(prob_table)
+# Extract that channel’s data
+lead_idx = lead_names.index(selected_lead)
+lead_signal = sig_all[:, lead_idx]  # shape = [nsteps]
 
-        # ------------------------------------------------------------
-        # 8) (Optional) Bar chart of the nine probabilities
-        # ------------------------------------------------------------
-        fig2, ax2 = plt.subplots(figsize=(8, 3))
-        ax2.bar(classes, probs, color="tab:blue")
-        ax2.set_ylabel("Probability")
-        ax2.set_ylim(0, 1)
-        ax2.set_title("Confidence for Each Class")
-        ax2.set_xticklabels(classes, rotation=45, ha="right")
-        st.pyplot(fig2)
+# Build a Pandas Series with a time index (in seconds):
+# Assume sample rate = record.fs (e.g. 500 Hz)
+fs = record.fs if hasattr(record, "fs") else 500
+times = np.arange(len(lead_signal)) / fs
+df_lead = pd.DataFrame({
+    "Time (s)": times,
+    f"Lead {selected_lead} (µV)": lead_signal
+})
 
+st.markdown("**" + {
+    "en": "Interactive ECG Plot (zoom/pan with your mouse):",
+    "fr": "Graphique ECG interactif (zoom/défilement avec la souris) :"
+}[lang])
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=df_lead["Time (s)"],
+    y=df_lead[f"Lead {selected_lead} (µV)"],
+    mode="lines",
+    line=dict(color="blue"),
+    name=f"Lead {selected_lead}"
+))
+
+# Placeholder: if you have a list of abnormality ranges, overlay them as red rectangles.
+# Example format for abnormal_ranges: [(start_time_s, end_time_s), …]
+abnormal_ranges = []  # ← in the future, replace with real output from a localization module
+
+for (t0, t1) in abnormal_ranges:
+    fig.add_vrect(
+        x0=t0, x1=t1,
+        fillcolor="red",
+        opacity=0.25,
+        line_width=0,
+        layer="below",
+        annotation_text=""
+    )
+
+fig.update_layout(
+    xaxis_title="Time (s)",
+    yaxis_title=f"Lead {selected_lead} amplitude (µV)",
+    margin=dict(l=40, r=20, t=30, b=40),
+    height=300
+)
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown(f"_{TEXT['abnormal_hint'][lang]}_", unsafe_allow_html=True)
+
+# -----------------------------
+# 7) PREPROCESS FULL 12-LEAD SIGNAL
+# -----------------------------
+# We want exactly 15 000 samples per lead (30 s at 500 Hz). If shorter, pad at top; if longer, take the last 15 000.
+if nsteps >= 15000:
+    clipped = sig_all[-15000:, :]  # last 15 000 rows
 else:
-    st.info("Please upload exactly two files (`.dat` + `.hea`) with identical basenames.")
+    clipped = sig_all          # fewer rows, will zero‐pad next
+
+buffered = np.zeros((15000, nleads), dtype=np.float32)
+buffered[-clipped.shape[0]:, :] = clipped
+# Convert to [n_leads, 15000], then [1, n_leads, 15000]
+x_np = buffered.transpose()           # shape = [nleads, 15000]
+x_tensor = torch.from_numpy(x_np).unsqueeze(0).to(device).float()  # [1, nleads, 15000]
+
+# -----------------------------
+# 8) MODEL INFERENCE → 9 PROBS
+# -----------------------------
+with torch.no_grad():
+    logits = model(x_tensor)                    # [1, 9]
+    probs = torch.sigmoid(logits)[0].cpu().numpy()  # [9]
+
+classes = ['SNR','AF','IAVB','LBBB','RBBB','PAC','PVC','STD','STE']
+prob_dict = {cls: float(probs[i]) for i, cls in enumerate(classes)}
+
+st.markdown(f"## {TEXT['prob_title'][lang]}")
+st.markdown(TEXT["prob_explain"][lang])
+
+# If pandas ≥ 1.0 is installed, we can do:
+try:
+    df_probs = pd.DataFrame({
+        "Class": classes,
+        "Probability": [f"{p:.3f}" for p in probs]
+    })
+    st.table(df_probs)
+except Exception:
+    # Fallback if pandas < 1.0 and pyarrow is missing:
+    for cls, p in prob_dict.items():
+        st.markdown(f"- **{cls}**: {p:.3f}")
+
+# -----------------------------
+# 9) BAR CHART OF PROBABILITIES
+# -----------------------------
+fig2 = go.Figure()
+fig2.add_trace(go.Bar(
+    x=classes,
+    y=probs,
+    marker_color="navy",
+    text=[f"{p:.2f}" for p in probs],
+    textposition="auto"
+))
+fig2.update_layout(
+    yaxis=dict(title="Probability", range=[0, 1]),
+    xaxis=dict(title="Class"),
+    margin=dict(l=40, r=20, t=30, b=40),
+    height=300
+)
+st.plotly_chart(fig2, use_container_width=True)
