@@ -4,12 +4,17 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-1.2.0-orange.svg)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![SHAP](https://img.shields.io/badge/SHAP-0.35.1-red.svg)](https://shap.readthedocs.io/)
+[![Web App](https://img.shields.io/badge/Web%20App-Hearline-brightgreen.svg)](https://github.com/blamairia/Hearline-Webapp)
+[![Documentation](https://img.shields.io/badge/docs-online-blue.svg)](https://github.com/blamairia/Hearline-Webapp/tree/master/doc/index.md)
 
 ## Abstract
 
 This repository contains the implementation for **" Deep Learning for  Diagnosis of 12-lead Electrocardiogram"**. Electrocardiogram (ECG) is a widely used, reliable, non-invasive approach for cardiovascular disease diagnosis. With the rapid growth of ECG examinations and the insufficiency of cardiologists, accurately automatic diagnosis of ECG signals has become a critical research area. 
 
 We developed a deep neural network for **multi-label classification** of cardiac arrhythmias in 12-lead ECG records using a **ResNet-34** architecture adapted for 1D time-series data. Our method achieved an average **AUC of 0.970** and an average **F1-score of 0.813** on the CPSC2018 dataset. The model demonstrates superior performance when using all 12 leads compared to single-lead inputs, with leads **I, aVR, and V5** showing the best individual performance. We employed **SHAP (SHapley Additive exPlanations)** for model interpretability and developed a comprehensive web application for clinical deployment.
+
+🌐 **Live Web Application**: [Hearline-Webapp](https://github.com/blamairia/Hearline-Webapp) - Interactive clinical interface for ECG analysis  
+📚 **Documentation**: [Complete Documentation](https://github.com/blamairia/Hearline-Webapp/tree/master/doc/index.md) - Detailed API and usage guide
 
 ## 🏥 Clinical Significance
 
@@ -392,6 +397,39 @@ Our SHAP analysis revealed:
 - **Clinical Utility**: Outputs designed for healthcare professionals
 - **Interpretability**: Built-in explainability features
 
+## 🌐 Related Projects & Documentation
+
+### Hearline-Webapp
+The main clinical deployment interface for this ECG diagnosis system:
+- **Repository**: [Hearline-Webapp](https://github.com/blamairia/Hearline-Webapp)
+- **Documentation**: [Complete Documentation](https://github.com/blamairia/Hearline-Webapp/tree/master/doc/index.md)
+- **Features**: Web-based clinical interface, real-time ECG analysis, multi-language support
+
+
+### Quick Links
+- 🚀 **Live Demo**: [Try the Web Application](https://github.com/blamairia/Hearline-Webapp)
+- 🔬 **Research Code**: [This Repository](https://github.com/blamairia/ecg-diagnosis)
+
+
+
+## 🤝 Contributing
+
+We welcome contributions from the research community:
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
+5. **Open** a Pull Request
+
+### Areas for Contribution
+
+- **Additional Datasets**: Integration with other ECG databases
+- **New Architectures**: Transformer-based or hybrid models
+- **Clinical Validation**: Real-world deployment studies
+- **Mobile Deployment**: Edge computing optimizations
+- **Multi-Modal Integration**: Combining with clinical history
+
 
 
 ## 📄 License
@@ -411,7 +449,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 For questions about this research or potential collaborations:
 
 - **Primary Contact**: Blamairia@gmail.com
-
+- **Research Repository**: [ECG-Diagnosis](https://github.com/blamairia/ecg-diagnosis)
+- **Web Application**: [Hearline-Webapp](https://github.com/blamairia/Hearline-Webapp)
+- **Documentation**: [Complete Documentation](https://github.com/blamairia/Hearline-Webapp/tree/master/doc/index.md)
 
 ---
 
